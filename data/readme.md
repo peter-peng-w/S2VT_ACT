@@ -1,0 +1,2 @@
+Distilles 1 word from each category lable in the `actions.txt` and forms the new *short* version of the action set in `action_short.txt`
+Notice that since orignial A50 has 2 actions: *__punch__* and *__slap__*, I add A61 to be *__slap__* and keep A50 to be *__punch__*
