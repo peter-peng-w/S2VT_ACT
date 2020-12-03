@@ -28,8 +28,6 @@ def train(loader, model, optimizer, lr_scheduler, opt, device, crit):
     global_step = 0
     # model = nn.DataParallel(model) # just ignore data parallel here
     for epoch in range(opt["epochs"]):
-        lr_scheduler.step()
-        train_logger.add_scalar('lr', optimizer.param_groups[0]['lr'], global_step=global_step)
         iteration = 0
         # If start self crit training
         if opt["self_crit_after"] != -1 and epoch >= opt["self_crit_after"]:
@@ -84,6 +82,9 @@ def train(loader, model, optimizer, lr_scheduler, opt, device, crit):
             # Add Loss Statistics
             if train_logger is not None and iteration % 4 == 0:
                 train_logger.add_scalar('loss', train_loss, global_step=global_step)
+
+        lr_scheduler.step()
+        train_logger.add_scalar('lr', optimizer.param_groups[0]['lr'], global_step=global_step)
 
         if epoch % opt["save_checkpoint_every"] == 0:
             model_path = os.path.join(opt["checkpoint_path"], 'model_%d.pth' % (epoch))
