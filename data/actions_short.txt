@@ -46,7 +46,7 @@ A45: chest
 A46: back
 A47: neck
 A48: vomit
-A49: fan self
+A49: fan
 A50: punch
 A51: kick
 A52: push

@@ -83,7 +83,7 @@ def main(opt):
                              input_dropout_p=opt["input_dropout_p"],
                              rnn_dropout_p=opt["rnn_dropout_p"], bidirectional=opt["bidirectional"])
         model = S2VTAttModel(encoder, decoder).cuda()
-    #model = nn.DataParallel(model)
+    # model = nn.DataParallel(model)
     # Setup the model
     model.load_state_dict(torch.load(opt["saved_model"]))
     crit = utils.LanguageModelCriterion()

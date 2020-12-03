@@ -20,7 +20,7 @@ class VideoDataset(Dataset):
 
     def __init__(self, opt, mode):
         super(VideoDataset, self).__init__()
-        self.mode = mode  # to load train/val/test data
+        self.mode = mode  # to load train/validate/test data
 
         # load the json file which contains information about the dataset
         self.captions = json.load(open(opt["caption_json"]))
@@ -30,7 +30,7 @@ class VideoDataset(Dataset):
         print('vocab size is ', len(self.ix_to_word))
         self.splits = info['videos']
         print('number of train videos: ', len(self.splits['train']))
-        print('number of val videos: ', len(self.splits['val']))
+        print('number of validate videos: ', len(self.splits['validate']))
         print('number of test videos: ', len(self.splits['test']))
 
         self.feats_dir = opt["feats_dir"]
@@ -45,11 +45,11 @@ class VideoDataset(Dataset):
         """This function returns a tuple that is further passed to collate_fn
         """
         # which part of data to load
-        if self.mode == 'val':
+        if self.mode == 'validate':
             ix += len(self.splits['train'])
         elif self.mode == 'test':
-            ix = ix + len(self.splits['train']) + len(self.splits['val'])
-        
+            ix = ix + len(self.splits['train']) + len(self.splits['validate'])
+
         fc_feat = []
         for dir in self.feats_dir:
             fc_feat.append(np.load(os.path.join(dir, 'video%i.npy' % (ix))))
@@ -61,26 +61,35 @@ class VideoDataset(Dataset):
         label = np.zeros(self.max_len)
         mask = np.zeros(self.max_len)
         captions = self.captions['video%i'%(ix)]['final_captions']
+        # Add <PAD>
         gts = np.zeros((len(captions), self.max_len))
         for i, cap in enumerate(captions):
             if len(cap) > self.max_len:
                 cap = cap[:self.max_len]
-                cap[-1] = '<eos>'
+                cap[-1] = '<EOS>'
             for j, w in enumerate(cap):
                 gts[i, j] = self.word_to_ix[w]
 
         # random select a caption for this video
         cap_ix = random.randint(0, len(captions) - 1)
         label = gts[cap_ix]
-        non_zero = (label == 0).nonzero()
-        mask[:int(non_zero[0][0]) + 1] = 1
+        # Mask is used to mask <EOS> and <PAD>. <EOS>=1 and <PAD>=0
+        non_zero = (label <= 1).nonzero()
+        try:
+            mask[:int(non_zero[0][0]) + 1] = 1
+        except:
+            print('non_zero:{}'.format(non_zero))
+            print('captions:{}'.format(captions))
+            print('gts:{}'.format(gts))
+            print('label:{}'.format(label))
+            raise ValueError
 
         data = {}
         data['fc_feats'] = torch.from_numpy(fc_feat).type(torch.FloatTensor)
         data['labels'] = torch.from_numpy(label).type(torch.LongTensor)
         data['masks'] = torch.from_numpy(mask).type(torch.FloatTensor)
         data['gts'] = torch.from_numpy(gts).long()
-        data['video_ids'] = 'video%i'%(ix)
+        data['video_ids'] = 'video%i' % (ix)
         return data
 
     def __len__(self):

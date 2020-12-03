@@ -1,6 +1,6 @@
 import json
 import os
-
+from os import path
 import numpy as np
 
 import misc.utils as utils
@@ -10,17 +10,26 @@ import torch.optim as optim
 from torch.nn.utils import clip_grad_value_
 from dataloader import VideoDataset
 from misc.rewards import get_self_critical_reward, init_cider_scorer
-from models import DecoderRNN, EncoderRNN, S2VTAttModel, S2VTModel
+from model.S2VTModel import S2VTModel
 from torch import nn
 from torch.utils.data import DataLoader
+import torch.utils.tensorboard as tb
 
 
-def train(loader, model, crit, optimizer, lr_scheduler, opt, rl_crit=None):
+def train(loader, model, optimizer, lr_scheduler, opt, device, crit):
+    # Add Tensorboard
+    train_logger, valid_logger = None, None
+    if opt["log_dir"] is not None:
+        train_logger = tb.SummaryWriter(path.join(opt["log_dir"], 'train'), flush_secs=1)
+        # valid_logger = tb.SummaryWriter(path.join(opt["log_dir"], 'valid'), flush_secs=1)
+
+    # Training Procedure
     model.train()
-    #model = nn.DataParallel(model)
+    global_step = 0
+    # model = nn.DataParallel(model) # just ignore data parallel here
     for epoch in range(opt["epochs"]):
         lr_scheduler.step()
-
+        train_logger.add_scalar('lr', optimizer.param_groups[0]['lr'], global_step=global_step)
         iteration = 0
         # If start self crit training
         if opt["self_crit_after"] != -1 and epoch >= opt["self_crit_after"]:
@@ -30,43 +39,55 @@ def train(loader, model, crit, optimizer, lr_scheduler, opt, rl_crit=None):
             sc_flag = False
 
         for data in loader:
-            torch.cuda.synchronize()
-            fc_feats = data['fc_feats'].cuda()
-            labels = data['labels'].cuda()
-            masks = data['masks'].cuda()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            fc_feats = data['fc_feats'].to(device)
+            labels = data['labels'].to(device)
+            masks = data['masks'].to(device)
 
             optimizer.zero_grad()
             if not sc_flag:
                 seq_probs, _ = model(fc_feats, labels, 'train')
+                # Using Language Model Loss (NLLLoss or CrossEntropy Loss)
                 loss = crit(seq_probs, labels[:, 1:], masks[:, 1:])
             else:
-                seq_probs, seq_preds = model(
-                    fc_feats, mode='inference', opt=opt)
-                reward = get_self_critical_reward(model, fc_feats, data,
-                                                  seq_preds)
-                print(reward.shape)
-                loss = rl_crit(seq_probs, seq_preds,
-                               torch.from_numpy(reward).float().cuda())
+                print('Currently ignore RL criterion')
+                # seq_probs, seq_preds = model(
+                #     fc_feats, mode='inference', opt=opt)
+                # reward = get_self_critical_reward(model, fc_feats, data,
+                #                                   seq_preds)
+                # print(reward.shape)
+                # loss = rl_crit(seq_probs, seq_preds,
+                #                torch.from_numpy(reward).float().cuda())
 
             loss.backward()
             clip_grad_value_(model.parameters(), opt['grad_clip'])
             optimizer.step()
             train_loss = loss.item()
-            torch.cuda.synchronize()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
             iteration += 1
+            global_step += 1
 
             if not sc_flag:
-                print("iter %d (epoch %d), train_loss = %.6f" %
-                      (iteration, epoch, train_loss))
+                print("iter %d (epoch %d), train_loss = %.6f" % (iteration, epoch, train_loss))
             else:
-                print("iter %d (epoch %d), avg_reward = %.6f" %
-                      (iteration, epoch, np.mean(reward[:, 0])))
+                print('Currently ignore RL criterion')
+                # print("iter %d (epoch %d), avg_reward = %.6f" %
+                #       (iteration, epoch, np.mean(reward[:, 0])))
+
+            # Add Logger
+            if train_logger is not None and global_step % 100 == 0:
+                # Log some real data
+                pass
+
+            # Add Loss Statistics
+            if train_logger is not None and iteration % 4 == 0:
+                train_logger.add_scalar('loss', train_loss, global_step=global_step)
 
         if epoch % opt["save_checkpoint_every"] == 0:
-            model_path = os.path.join(opt["checkpoint_path"],
-                                      'model_%d.pth' % (epoch))
-            model_info_path = os.path.join(opt["checkpoint_path"],
-                                           'model_score.txt')
+            model_path = os.path.join(opt["checkpoint_path"], 'model_%d.pth' % (epoch))
+            model_info_path = os.path.join(opt["checkpoint_path"], 'model_score.txt')
             torch.save(model.state_dict(), model_path)
             print("model saved to %s" % (model_path))
             with open(model_info_path, 'a') as f:
@@ -74,10 +95,12 @@ def train(loader, model, crit, optimizer, lr_scheduler, opt, rl_crit=None):
 
 
 def main(opt):
+    # DataLoader
     dataset = VideoDataset(opt, 'train')
     dataloader = DataLoader(dataset, batch_size=opt["batch_size"], shuffle=True)
     opt["vocab_size"] = dataset.get_vocab_size()
     if opt["model"] == 'S2VTModel':
+        print(opt)
         model = S2VTModel(
             opt["vocab_size"],
             opt["max_len"],
@@ -88,26 +111,14 @@ def main(opt):
             n_layers=opt['num_layers'],
             rnn_dropout_p=opt["rnn_dropout_p"])
     elif opt["model"] == "S2VTAttModel":
-        encoder = EncoderRNN(
-            opt["dim_vid"],
-            opt["dim_hidden"],
-            bidirectional=opt["bidirectional"],
-            input_dropout_p=opt["input_dropout_p"],
-            rnn_cell=opt['rnn_type'],
-            rnn_dropout_p=opt["rnn_dropout_p"])
-        decoder = DecoderRNN(
-            opt["vocab_size"],
-            opt["max_len"],
-            opt["dim_hidden"],
-            opt["dim_word"],
-            input_dropout_p=opt["input_dropout_p"],
-            rnn_cell=opt['rnn_type'],
-            rnn_dropout_p=opt["rnn_dropout_p"],
-            bidirectional=opt["bidirectional"])
-        model = S2VTAttModel(encoder, decoder)
-    model = model.cuda()
-    crit = utils.LanguageModelCriterion()
-    rl_crit = utils.RewardCriterion()
+        print('Currently not supported.')
+        raise ValueError
+    # Load model
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    model = model.to(device)
+    # Criterions #
+    LMCriterion = utils.LanguageModelCriterion()
+    # rl_crit = utils.RewardCriterion()
     optimizer = optim.Adam(
         model.parameters(),
         lr=opt["learning_rate"],
@@ -117,7 +128,7 @@ def main(opt):
         step_size=opt["learning_rate_decay_every"],
         gamma=opt["learning_rate_decay_rate"])
 
-    train(dataloader, model, crit, optimizer, exp_lr_scheduler, opt, rl_crit)
+    train(dataloader, model, optimizer, exp_lr_scheduler, opt, device, LMCriterion)
 
 
 if __name__ == '__main__':

@@ -1,3 +1,9 @@
 **/.DS_*
 __pycache__/
-**/MSR-VTT
+/data/MSR-VTT/*
+/data/MSR-VTT_Lite/*
+/save
+/logging/train/*
+/data/feats/resnet152/*
+/data/caption.json
+/data/info.json
