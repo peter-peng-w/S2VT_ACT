@@ -5,7 +5,8 @@ import torch
 from torch import nn
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
-from models import EncoderRNN, DecoderRNN, S2VTAttModel, S2VTModel
+from model.S2VTModel import S2VTModel
+from model.S2VTACTModel import S2VTACTModel
 from dataloader import VideoDataset
 import misc.utils as utils
 from misc.cocoeval import suppress_stdout_stderr, COCOScorer
@@ -26,7 +27,7 @@ def convert_data_to_coco_scorer_format(data_frame):
     return gts
 
 
-def test(model, crit, dataset, vocab, opt):
+def test(model, crit, dataset, vocab, device, opt):
     model.eval()
     loader = DataLoader(dataset, batch_size=opt["batch_size"], shuffle=True)
     scorer = COCOScorer()
@@ -37,11 +38,10 @@ def test(model, crit, dataset, vocab, opt):
     samples = {}
     for data in loader:
         # forward the model to get loss
-        fc_feats = data['fc_feats'].cuda()
-        labels = data['labels'].cuda()
-        masks = data['masks'].cuda()
+        fc_feats = data['fc_feats'].to(device)
+        labels = data['labels'].to(device)
+        masks = data['masks'].to(device)
         video_ids = data['video_ids']
-      
         # forward the model to also get generated samples for each image
         with torch.no_grad():
             seq_probs, seq_preds = model(
@@ -63,32 +63,32 @@ def test(model, crit, dataset, vocab, opt):
 
     with open(os.path.join(opt["results_path"], "scores.txt"), 'a') as scores_table:
         scores_table.write(json.dumps(results[0]) + "\n")
-    with open(os.path.join(opt["results_path"],
-                           opt["model"].split("/")[-1].split('.')[0] + ".json"), 'w') as prediction_results:
-        json.dump({"predictions": samples, "scores": valid_score},
-                  prediction_results)
+    with open(os.path.join(opt["results_path"], opt["model"].split("/")[-1].split('.')[0] + ".json"), 'w') as prediction_results:
+        json.dump({"predictions": samples, "scores": valid_score}, prediction_results)
 
 
 def main(opt):
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     dataset = VideoDataset(opt, "test")
     opt["vocab_size"] = dataset.get_vocab_size()
     opt["seq_length"] = dataset.max_len
-    if opt["model"] == 'S2VTModel':
-        model = S2VTModel(opt["vocab_size"], opt["max_len"], opt["dim_hidden"], opt["dim_word"],
-                          rnn_dropout_p=opt["rnn_dropout_p"]).cuda()
+    if opt["model"] == "S2VTModel":
+        model = S2VTModel(
+            opt["vocab_size"], opt["max_len"], opt["dim_hidden"], opt["dim_word"],
+            rnn_dropout_p=opt["rnn_dropout_p"]).to(device)
+    elif opt["model"] == "S2VTACTModel":
+        model = S2VTACTModel(
+            opt["vocab_size"], opt["max_len"], opt["dim_hidden"], opt["dim_word"],
+            rnn_dropout_p=opt["rnn_dropout_p"]).to(device)
     elif opt["model"] == "S2VTAttModel":
-        encoder = EncoderRNN(opt["dim_vid"], opt["dim_hidden"], bidirectional=opt["bidirectional"],
-                             input_dropout_p=opt["input_dropout_p"], rnn_dropout_p=opt["rnn_dropout_p"])
-        decoder = DecoderRNN(opt["vocab_size"], opt["max_len"], opt["dim_hidden"], opt["dim_word"],
-                             input_dropout_p=opt["input_dropout_p"],
-                             rnn_dropout_p=opt["rnn_dropout_p"], bidirectional=opt["bidirectional"])
-        model = S2VTAttModel(encoder, decoder).cuda()
+        print('Currently Not Supported')
+        raise ValueError
     # model = nn.DataParallel(model)
     # Setup the model
     model.load_state_dict(torch.load(opt["saved_model"]))
     crit = utils.LanguageModelCriterion()
 
-    test(model, crit, dataset, dataset.get_vocab(), opt)
+    test(model, crit, dataset, dataset.get_vocab(), device, opt)
 
 
 if __name__ == '__main__':
