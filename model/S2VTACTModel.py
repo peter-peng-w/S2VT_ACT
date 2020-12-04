@@ -35,18 +35,33 @@ class S2VTACTModel(torch.nn.Module):
 
         self.out = nn.Linear(self.dim_hidden, self.dim_output)
 
-    def forward(self, vid_feats, target_variable=None,
+    def forward(self, vid_feats, action, device, target_variable=None,
                 mode='train', opt={}):
+        '''
+            # Update
+
+            Except for only take video features as input,
+            we also take actions (predicted by action recognition model) as another input
+
+            Here, since we are training on MSR-VTT which cannot directly being used to do action recognition
+            as our action recognition model need the skeleton map data, we thus extract possible true actions
+            from the candidate captions (20 captions for each video clip in MSR-VTT dataset)
+
+        '''
         batch_size, n_frames, _ = vid_feats.shape
-        padding_words = Variable(vid_feats.data.new(batch_size, n_frames, self.dim_word)).zero_()
+        # print('vid_feats shape:{}'.format(vid_feats.shape))
+        action_ebd = self.embedding(action)
+        # print('action_ebd shape:{}'.format(action_ebd.shape))
+        action_ebd = action_ebd.unsqueeze(dim=1)
+        padding_words = action_ebd.expand(-1, n_frames, -1)
+        # padding_words = action_ebd.repeat(batch_size, n_frames, 1)
         padding_frames = Variable(vid_feats.data.new(batch_size, 1, self.dim_vid)).zero_()
-        # padding_words = vid_feats.data.new(batch_size, n_frames, self.dim_word).zero_()
-        # padding_frames = vid_feats.data.new(batch_size, 1, self.dim_vid).zero_()
+
         state1 = None
         state2 = None
         # self.rnn1.flatten_parameters()
         # self.rnn2.flatten_parameters()
-        # print('vid_feats shape:{}'.format(vid_feats.shape))
+
         output1, state1 = self.rnn1(vid_feats, state1)
         input2 = torch.cat((output1, padding_words), dim=2)
         output2, state2 = self.rnn2(input2, state2)
