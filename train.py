@@ -8,7 +8,7 @@ import opts
 import torch
 import torch.optim as optim
 from torch.nn.utils import clip_grad_value_
-from dataloader import VideoDataset
+from dataloader import VideoDataset, VideoActDataset
 from misc.rewards import get_self_critical_reward, init_cider_scorer
 from model.S2VTModel import S2VTModel
 from model.S2VTACTModel import S2VTACTModel
@@ -48,7 +48,9 @@ def train(loader, model, optimizer, lr_scheduler, opt, device, crit):
             fc_feats = data['fc_feats'].to(device)
             labels = data['labels'].to(device)
             masks = data['masks'].to(device)
-            action = data['action'].to(device)
+
+            if use_action:
+                action = data['action'].to(device)
 
             optimizer.zero_grad()
             if not sc_flag:
@@ -78,7 +80,8 @@ def train(loader, model, optimizer, lr_scheduler, opt, device, crit):
             global_step += 1
 
             if not sc_flag:
-                print("iter %d (epoch %d), train_loss = %.6f" % (iteration, epoch, train_loss))
+                if iteration % 20 == 0:
+                    print("iter %d (epoch %d), train_loss = %.6f" % (iteration, epoch, train_loss))
             else:
                 print('Currently ignore RL criterion')
                 # print("iter %d (epoch %d), avg_reward = %.6f" %
@@ -90,9 +93,10 @@ def train(loader, model, optimizer, lr_scheduler, opt, device, crit):
                 pass
 
             # Add Loss Statistics
-            if train_logger is not None and iteration % 4 == 0:
+            if train_logger is not None and iteration % 10 == 0:
                 train_logger.add_scalar('loss', train_loss, global_step=global_step)
 
+        # Step the Learning Rate Scheduler
         lr_scheduler.step()
         train_logger.add_scalar('lr', optimizer.param_groups[0]['lr'], global_step=global_step)
 
@@ -107,7 +111,13 @@ def train(loader, model, optimizer, lr_scheduler, opt, device, crit):
 
 def main(opt):
     # DataLoader
-    dataset = VideoDataset(opt, 'train')
+    if opt["model"] == 'S2VTModel':
+        dataset = VideoDataset(opt, 'train')
+    elif opt["model"] == 'S2VTACTModel':
+        dataset = VideoActDataset(opt, 'train')
+    else:
+        print('Currently Not Support this model: {}'.format(opt["model"]))
+        raise ValueError
     dataloader = DataLoader(dataset, batch_size=opt["batch_size"], shuffle=True)
     opt["vocab_size"] = dataset.get_vocab_size()
 
