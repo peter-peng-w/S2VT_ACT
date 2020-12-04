@@ -7,7 +7,7 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from model.S2VTModel import S2VTModel
 from model.S2VTACTModel import S2VTACTModel
-from dataloader import VideoDataset
+from dataloader import VideoDataset, VideoActDataset
 import misc.utils as utils
 from misc.cocoeval import suppress_stdout_stderr, COCOScorer
 
@@ -42,10 +42,16 @@ def test(model, crit, dataset, vocab, device, opt):
         labels = data['labels'].to(device)
         masks = data['masks'].to(device)
         video_ids = data['video_ids']
+        if opt["model"] == "S2VTACTModel":
+            action = data['action'].to(device)
         # forward the model to also get generated samples for each image
         with torch.no_grad():
-            seq_probs, seq_preds = model(
-                fc_feats, mode='inference', opt=opt)
+            if opt["model"] == "S2VTModel":
+                seq_probs, seq_preds = model(
+                    fc_feats, mode='inference', opt=opt)
+            else:
+                seq_probs, seq_preds = model(
+                    fc_feats, action=action, device=device, mode='inference', opt=opt)
 
         sents = utils.decode_sequence(vocab, seq_preds)
 
@@ -69,7 +75,14 @@ def test(model, crit, dataset, vocab, device, opt):
 
 def main(opt):
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    dataset = VideoDataset(opt, "test")
+    if opt["model"] == "S2VTModel":
+        dataset = VideoDataset(opt, "test")
+    elif opt["model"] == "S2VTACTModel":
+        dataset = VideoActDataset(opt, "test")
+    else:
+        print('Currently not supported: {}'.format(opt["model"]))
+        raise ValueError
+    
     opt["vocab_size"] = dataset.get_vocab_size()
     opt["seq_length"] = dataset.max_len
     if opt["model"] == "S2VTModel":
@@ -81,7 +94,7 @@ def main(opt):
             opt["vocab_size"], opt["max_len"], opt["dim_hidden"], opt["dim_word"],
             rnn_dropout_p=opt["rnn_dropout_p"]).to(device)
     elif opt["model"] == "S2VTAttModel":
-        print('Currently Not Supported')
+        print('Currently Not Supported: {}'.format(opt["model"]))
         raise ValueError
     # model = nn.DataParallel(model)
     # Setup the model
@@ -97,7 +110,6 @@ if __name__ == '__main__':
                         help='recover train opts from saved opt_json')
     parser.add_argument('--saved_model', type=str, default='',
                         help='path to saved model to evaluate')
-
     parser.add_argument('--dump_json', type=int, default=1,
                         help='Dump json with predictions into vis folder? (1=yes,0=no)')
     parser.add_argument('--results_path', type=str, default='results/')
