@@ -6,7 +6,7 @@ from torch.autograd import Variable
 
 
 class S2VTModel(torch.nn.Module):
-    def __init__(self, vocab_size=10000, max_len=28, dim_hidden=512, dim_word=512, dim_vid=2048, sos_id=1, eos_id=0,
+    def __init__(self, vocab_size=10000, max_len=28, dim_hidden=512, dim_word=512, dim_vid=2048, sos_id=2, eos_id=1,
                  n_layers=1, rnn_cell='gru', rnn_dropout_p=0.2):
         super().__init__()
         if rnn_cell.lower() == 'lstm':
@@ -72,8 +72,9 @@ class S2VTModel(torch.nn.Module):
             seq_probs = torch.cat(seq_probs, 1)
 
         else:
+            device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
             current_words = self.embedding(
-                Variable(torch.LongTensor([self.sos_id] * batch_size)).cuda())
+                Variable(torch.LongTensor([self.sos_id] * batch_size)).to(device))
             for i in range(self.max_length - 1):
                 self.rnn1.flatten_parameters()
                 self.rnn2.flatten_parameters()
