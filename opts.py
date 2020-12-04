@@ -26,6 +26,13 @@ def parse_opt():
     )
 
     parser.add_argument(
+        '--actions_txt',
+        type=str,
+        default='data/actions_short.txt',
+        help='path to the action set txt (short version, only has 1 words for each action)'
+    )
+
+    parser.add_argument(
         '--feats_dir',
         nargs='*',
         type=str,

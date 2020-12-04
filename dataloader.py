@@ -22,6 +22,15 @@ class VideoDataset(Dataset):
         super(VideoDataset, self).__init__()
         self.mode = mode  # to load train/validate/test data
 
+        # load the action
+        self.action_set = {}
+        with open(opt["actions_txt"], 'rt') as f:
+            for line in f:
+                if len(line) > 2:
+                    line_data = line.strip().split(': ')
+                    self.action_set[line_data[0]] = line_data[1]
+        self.action_numbers = len(self.action_set)
+
         # load the json file which contains information about the dataset
         self.captions = json.load(open(opt["caption_json"]))
         info = json.load(open(opt["info_json"]))
@@ -43,6 +52,8 @@ class VideoDataset(Dataset):
 
     def __getitem__(self, ix):
         """This function returns a tuple that is further passed to collate_fn
+            # Update 1 #
+            instead of only return the max_len's text one-hot data, also return a action text (if there isn't, return <PAD>).
         """
         # which part of data to load
         if self.mode == 'validate':
@@ -60,7 +71,9 @@ class VideoDataset(Dataset):
             fc_feat = np.concatenate((fc_feat, np.tile(c3d_feat, (fc_feat.shape[0], 1))), axis=1)
         label = np.zeros(self.max_len)
         mask = np.zeros(self.max_len)
-        captions = self.captions['video%i'%(ix)]['final_captions']
+        captions = self.captions['video%i' % (ix)]['final_captions']
+        raw_captions = self.captions['video%i' % (ix)]['captions']
+
         # Add <PAD>
         gts = np.zeros((len(captions), self.max_len))
         for i, cap in enumerate(captions):
@@ -73,6 +86,42 @@ class VideoDataset(Dataset):
         # random select a caption for this video
         cap_ix = random.randint(0, len(captions) - 1)
         label = gts[cap_ix]
+
+        # Select Actions
+        cnt_actions_in_select_cap = {}     # This count the frequency of actions for the cap_ix caption
+        cnt_actions_in_all_cap = {}
+        select_act = '<PAD>'               # Default set to be <PAD>
+        for key in self.action_set.keys():
+            cnt_actions_in_select_cap[key] = 0
+            cnt_actions_in_all_cap[key] = 0
+
+        for key in self.action_set.keys():
+            if self.action_set[key] in cap:
+                cnt_actions_in_select_cap[key] += 1
+        action_freq_select = list(cnt_actions_in_select_cap.values())
+
+        if sum(action_freq_select) > 0:
+            # randomly return an action appears in this selected caption
+            act_select_idx = np.random.choice(
+                self.action_numbers, 1, p=np.array(action_freq_select)/sum(action_freq_select))
+            select_act = list(self.action_set.values())[act_select_idx[0]]
+
+        else:
+            for cap in raw_captions:
+                for key in self.action_set.keys():
+                    if self.action_set[key] in cap:
+                        cnt_actions_in_all_cap[key] += 1
+            action_freq_all = list(cnt_actions_in_all_cap.values())
+
+            if sum(action_freq_all) > 0:
+                act_select_idx = np.random.choice(self.action_numbers, 1, p=np.array(action_freq_all)/sum(action_freq_all))
+                select_act = list(self.action_set.values())[act_select_idx[0]]
+
+        if select_act in self.word_to_ix.keys():
+            select_act_token = self.word_to_ix[select_act]
+        else:
+            select_act_token = self.word_to_ix['<PAD>']
+
         # Mask is used to mask <EOS> and <PAD>. <EOS>=1 and <PAD>=0
         non_zero = (label <= 1).nonzero()
         try:
@@ -90,6 +139,7 @@ class VideoDataset(Dataset):
         data['masks'] = torch.from_numpy(mask).type(torch.FloatTensor)
         data['gts'] = torch.from_numpy(gts).long()
         data['video_ids'] = 'video%i' % (ix)
+        data['action'] = torch.tensor(select_act_token).type(torch.LongTensor)
         return data
 
     def __len__(self):
