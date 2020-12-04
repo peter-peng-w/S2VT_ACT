@@ -66,7 +66,7 @@ class VideoDataset(Dataset):
             fc_feat.append(np.load(os.path.join(dir, 'video%i.npy' % (ix))))
         fc_feat = np.concatenate(fc_feat, axis=1)
         if self.with_c3d == 1:
-            c3d_feat = np.load(os.path.join(self.c3d_feats_dir, 'video%i.npy'%(ix)))
+            c3d_feat = np.load(os.path.join(self.c3d_feats_dir, 'video%i.npy' % (ix)))
             c3d_feat = np.mean(c3d_feat, axis=0, keepdims=True)
             fc_feat = np.concatenate((fc_feat, np.tile(c3d_feat, (fc_feat.shape[0], 1))), axis=1)
         label = np.zeros(self.max_len)
@@ -124,14 +124,7 @@ class VideoDataset(Dataset):
 
         # Mask is used to mask <EOS> and <PAD>. <EOS>=1 and <PAD>=0
         non_zero = (label <= 1).nonzero()
-        try:
-            mask[:int(non_zero[0][0]) + 1] = 1
-        except:
-            print('non_zero:{}'.format(non_zero))
-            print('captions:{}'.format(captions))
-            print('gts:{}'.format(gts))
-            print('label:{}'.format(label))
-            raise ValueError
+        mask[:int(non_zero[0][0]) + 1] = 1
 
         data = {}
         data['fc_feats'] = torch.from_numpy(fc_feat).type(torch.FloatTensor)
