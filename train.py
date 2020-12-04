@@ -11,6 +11,7 @@ from torch.nn.utils import clip_grad_value_
 from dataloader import VideoDataset
 from misc.rewards import get_self_critical_reward, init_cider_scorer
 from model.S2VTModel import S2VTModel
+from model.S2VTACTModel import S2VTACTModel
 from torch import nn
 from torch.utils.data import DataLoader
 import torch.utils.tensorboard as tb
@@ -22,6 +23,11 @@ def train(loader, model, optimizer, lr_scheduler, opt, device, crit):
     if opt["log_dir"] is not None:
         train_logger = tb.SummaryWriter(path.join(opt["log_dir"], 'train'), flush_secs=1)
         # valid_logger = tb.SummaryWriter(path.join(opt["log_dir"], 'valid'), flush_secs=1)
+
+    if opt["model"] == 'S2VTACTModel':
+        use_action = True
+    else:
+        use_action = False
 
     # Training Procedure
     model.train()
@@ -42,10 +48,14 @@ def train(loader, model, optimizer, lr_scheduler, opt, device, crit):
             fc_feats = data['fc_feats'].to(device)
             labels = data['labels'].to(device)
             masks = data['masks'].to(device)
+            action = data['action'].to(device)
 
             optimizer.zero_grad()
             if not sc_flag:
-                seq_probs, _ = model(fc_feats, labels, 'train')
+                if use_action:
+                    seq_probs, _ = model(vid_feats=fc_feats, action=action, device=device, target_variable=labels, mode='train')
+                else:
+                    seq_probs, _ = model(vid_feats=fc_feats, target_variable=labels, mode='train')
                 # Using Language Model Loss (NLLLoss or CrossEntropy Loss)
                 loss = crit(seq_probs, labels[:, 1:], masks[:, 1:])
             else:
@@ -100,6 +110,7 @@ def main(opt):
     dataset = VideoDataset(opt, 'train')
     dataloader = DataLoader(dataset, batch_size=opt["batch_size"], shuffle=True)
     opt["vocab_size"] = dataset.get_vocab_size()
+
     if opt["model"] == 'S2VTModel':
         print(opt)
         model = S2VTModel(
@@ -111,6 +122,19 @@ def main(opt):
             rnn_cell=opt['rnn_type'],
             n_layers=opt['num_layers'],
             rnn_dropout_p=opt["rnn_dropout_p"])
+
+    elif opt["model"] == 'S2VTACTModel':
+        print(opt)
+        model = S2VTACTModel(
+            opt["vocab_size"],
+            opt["max_len"],
+            opt["dim_hidden"],
+            opt["dim_word"],
+            opt['dim_vid'],
+            rnn_cell=opt['rnn_type'],
+            n_layers=opt['num_layers'],
+            rnn_dropout_p=opt["rnn_dropout_p"])
+
     elif opt["model"] == "S2VTAttModel":
         print('Currently not supported.')
         raise ValueError
