@@ -1,5 +1,5 @@
 # S2VT_ACT
-Final Project for UVa Vision and Language course
+Final Project for UVa Vision and Language course [[Homepage]](https://www.vicenteordonez.com/vislang/)
 
 Our project tries to enrich the sequence-to-sequence structure video captioning model with an action recognition model to emphasize the main action scene displayed in a video clip.
 
@@ -25,3 +25,6 @@ We reference some model structure and data processing settings provided by the f
 ### Papers
 1. Venugopalan, Subhashini, et al. "Sequence to sequence-video to text." Proceedings of the IEEE international conference on computer vision. 2015. [[Paper]](https://arxiv.org/abs/1505.00487)
 2. Yan, Sijie, Yuanjun Xiong, and Dahua Lin. "Spatial temporal graph convolutional networks for skeleton-based action recognition." arXiv preprint arXiv:1801.07455 (2018). [[Paper]](https://arxiv.org/pdf/1801.07455.pdf)
+
+### Useful links
+1. awesome video captioning: https://github.com/tgc1997/Awesome-Video-Captioning
