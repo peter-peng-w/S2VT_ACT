@@ -1,7 +1,7 @@
 # S2VT_ACT
 Final Project for UVa Vision and Language course [[Homepage]](https://www.vicenteordonez.com/vislang/)
 
-Our project tries to enrich the sequence-to-sequence structure video captioning model with an action recognition model to emphasize the main action scene displayed in a video clip.
+Our project tries to enrich the sequence-to-sequence structure video captioning model with an action recognition model to emphasize the main action scene displayed in a video clip. For more details, please refer to our report. [[final report]](./reference/S2VT_ACT.pdf)
 
 ## Approach
 ### Current Forcing Fusion Model for S2VTACT
